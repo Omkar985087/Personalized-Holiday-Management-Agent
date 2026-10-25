@@ -8,3 +8,5 @@ streamlit
 requests
 httpx
 pytest
+langchain_groq
+groq

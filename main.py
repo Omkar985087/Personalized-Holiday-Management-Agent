@@ -1,6 +1,18 @@
-def main():
-    print("Hello from personalized-holiday-management-agent!")
 
+import os
+from dotenv import load_dotenv
+from langchain_groq import ChatGroq
+from typing import TypedDict
+load_dotenv()
 
-if __name__ == "__main__":
-    main()
+model = ChatGroq(
+    model="openai/gpt-oss-20b",
+    temperature=0.3
+)
+
+def HolidayState(TypeDict):
+    destination:str
+    interests:str
+    days:int
+    itinerary: str
+    
