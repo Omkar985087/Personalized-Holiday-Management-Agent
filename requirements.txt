@@ -1,0 +1,10 @@
+langchain
+langgraph
+langchain-openai
+langchain-community
+python-dotenv
+pydantic
+streamlit
+requests
+httpx
+pytest
