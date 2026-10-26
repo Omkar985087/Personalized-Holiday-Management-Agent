@@ -78,26 +78,26 @@ def travel_planner(state: HolidayState):
         )
 
     prompt = f"""
-You are a professional travel planner.
+    You are a professional travel planner.
 
-Create an itinerary for EXACTLY {state['days']} days
-in {state['destination']}.
+    Create an itinerary for EXACTLY {state['days']} days
+    in {state['destination']}.
 
-User interests: {state['interests']}
+    User interests: {state['interests']}
 
-Research results:
-{places_context}
+    Research results:
+    {places_context}
 
-Requirements:
-1. Include exactly {state['days']} days.
-2. Use headings exactly like ## Day 1, ## Day 2, etc.
-3. Include morning, afternoon, and evening activities every day.
-4. Include food recommendations every day.
-5. Prioritize researched attractions when relevant.
-6. Do not claim opening hours have been verified.
-7. Avoid unnecessary repetition.
-8. Return Markdown.
-"""
+    Requirements:
+    1. Include exactly {state['days']} days.
+    2. Use headings exactly like ## Day 1, ## Day 2, etc.
+    3. Include morning, afternoon, and evening activities every day.
+    4. Include food recommendations every day.
+    5. Prioritize researched attractions when relevant.
+    6. Do not claim opening hours have been verified.
+    7. Avoid unnecessary repetition.
+    8. Return Markdown.
+    """
 
     response = model.invoke(prompt)
     return {"itinerary": response.content}
