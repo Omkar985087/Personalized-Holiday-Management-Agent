@@ -21,6 +21,8 @@ class HolidayState(TypedDict):
     destination: str
     interests: str
     days: int
+    budget: str
+    travel_style: str
     location: str
     attractions: list[dict]
     itinerary: str
@@ -77,6 +79,9 @@ def travel_planner(state: HolidayState):
             "they were verified by the research tool."
         )
 
+    budget = state.get("budget", "Moderate")
+    travel_style = state.get("travel_style", "Balanced")
+
     prompt = f"""
     You are a professional travel planner.
 
@@ -84,6 +89,8 @@ def travel_planner(state: HolidayState):
     in {state['destination']}.
 
     User interests: {state['interests']}
+    Budget preference: {budget}
+    Travel style: {travel_style}
 
     Research results:
     {places_context}
@@ -96,7 +103,9 @@ def travel_planner(state: HolidayState):
     5. Prioritize researched attractions when relevant.
     6. Do not claim opening hours have been verified.
     7. Avoid unnecessary repetition.
-    8. Return Markdown.
+    8. Tailor recommendations to a {budget} budget.
+    9. Pace activities for a {travel_style} travel style.
+    10. Return Markdown.
     """
 
     response = model.invoke(prompt)
@@ -168,36 +177,72 @@ graph_builder.add_edge("retry_planner", "travel_planner")
 
 graph = graph_builder.compile()
 
-destination = input("Enter your destination: ").strip()
-interests = input("Enter your interests (e.g., anime, food, nature): ").strip()
 
-while True:
-    try:
-        days = int(input("How many days is your trip? "))
+def plan_holiday(
+    destination: str,
+    interests: str,
+    days: int,
+    budget: str = "Moderate",
+    travel_style: str = "Balanced",
+) -> dict:
+    """Invoke the LangGraph workflow and return the final state dict.
 
-        if days < 1 or days > 30:
-            print("Please enter a duration between 1 and 30 days.")
-            continue
+    Parameters
+    ----------
+    destination : str
+        City or region the user wants to visit.
+    interests : str
+        Comma-separated interests (e.g. "food, nature, history").
+    days : int
+        Number of trip days (1–30).
+    budget : str
+        One of "Budget-friendly", "Moderate", or "Luxury".
+    travel_style : str
+        One of "Relaxed", "Balanced", or "Packed".
 
-        break
-    except ValueError:
-        print("Please enter a valid whole number.")
+    Returns
+    -------
+    dict
+        The final HolidayState produced by the graph.
+    """
+    initial_state: HolidayState = {
+        "destination": destination,
+        "interests": interests or "Local culture and sightseeing",
+        "days": days,
+        "budget": budget,
+        "travel_style": travel_style,
+        "location": "",
+        "attractions": [],
+        "itinerary": "",
+        "is_valid": False,
+        "retry_count": 0,
+    }
 
-initial_state = {
-    "destination": destination,
-    "interests": interests or "Local culture and sightseeing",
-    "days": days,
-    "location": "",
-    "attractions": [],
-    "itinerary": "",
-    "is_valid": False,
-    "retry_count": 0
-}
+    result = graph.invoke(initial_state)
+    return result
 
-result = graph.invoke(initial_state)
 
-print("\n" + "=" * 50)
-print("YOUR PERSONALIZED HOLIDAY ITINERARY")
-print("=" * 50)
-print(result["itinerary"])
+if __name__ == "__main__":
+    destination = input("Enter your destination: ").strip()
+    interests = input(
+        "Enter your interests (e.g., anime, food, nature): "
+    ).strip()
 
+    while True:
+        try:
+            days = int(input("How many days is your trip? "))
+
+            if days < 1 or days > 30:
+                print("Please enter a duration between 1 and 30 days.")
+                continue
+
+            break
+        except ValueError:
+            print("Please enter a valid whole number.")
+
+    result = plan_holiday(destination, interests, days)
+
+    print("\n" + "=" * 50)
+    print("YOUR PERSONALIZED HOLIDAY ITINERARY")
+    print("=" * 50)
+    print(result["itinerary"])
