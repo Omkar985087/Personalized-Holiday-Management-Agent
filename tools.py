@@ -1,49 +1,52 @@
-import requests
 
-def search_places(city:str):
-    url="https://nominatim.openstreetmap.org/search"
-    
-    params={
-        "q":city,
-        "format":"jsonv2",
-        "limit":1
+import requests
+import time
+
+NOMINATIM_URL = "https://nominatim.openstreetmap.org/search"
+
+OVERPASS_URLS = [
+    "https://overpass-api.de/api/interpreter",
+    "https://overpass.kumi.systems/api/interpreter",
+]
+
+HEADERS = {
+    "User-Agent": "PersonalizedHolidayAgent/1.0",
+    "Accept": "application/json",
+}
+
+
+def search_places(city: str):
+    params = {
+        "q": city,
+        "format": "jsonv2",
+        "limit": 1,
     }
-    
-    headers={
-       "User-Agent":"PersonalizedHolidayAgent/1.0"
-    }
-    
-    response=requests.get(
-        url,
+
+    response = requests.get(
+        NOMINATIM_URL,
         params=params,
-        headers=headers,
-        timeout=15   
+        headers=HEADERS,
+        timeout=15,
     )
-    
     response.raise_for_status()
-    
-    results=response.json()
-    
+
+    results = response.json()
+
     if not results:
         return []
-    
-    location=results[0]
-    
+
+    location = results[0]
+
     return [{
         "name": location["display_name"],
         "latitude": location["lat"],
         "longitude": location["lon"],
         "source": "OpenStreetMap",
-        "url": "https://www.openstreetmap.org/"
+        "url": "https://www.openstreetmap.org/",
     }]
-    
 
-import time
-import requests
 
 def find_attraction(longitude: float, latitude: float):
-    url = "https://overpass-api.de/api/interpreter"
-
     query = f"""
     [out:json][timeout:15];
     node["tourism"~"^(attraction|museum)$"]
@@ -51,31 +54,19 @@ def find_attraction(longitude: float, latitude: float):
     out body 15;
     """
 
-    headers = {
-        "User-Agent": "PersonalizedHolidayAgent/1.0",
-        "Accept": "application/json"
-    }
-
-    for attempt in range(3):
+    for url in OVERPASS_URLS:
         try:
+            print(f"Trying endpoint: {url}")
+
             response = requests.post(
                 url,
                 data={"data": query},
-                headers=headers,
-                timeout=30
+                headers=HEADERS,
+                timeout=30,
             )
 
-            if response.status_code in (429, 502, 503, 504):
-                if attempt < 2:
-                    wait_seconds = 2 ** (attempt + 1)
-                    print(
-                        f"Overpass busy. Retrying in "
-                        f"{wait_seconds} seconds..."
-                    )
-                    time.sleep(wait_seconds)
-                    continue
-
             response.raise_for_status()
+
             elements = response.json().get("elements", [])
             attractions = []
 
@@ -95,36 +86,33 @@ def find_attraction(longitude: float, latitude: float):
                     "url": (
                         "https://www.openstreetmap.org/"
                         f"{element['type']}/{element['id']}"
-                    )
+                    ),
                 })
 
             return attractions
 
         except requests.RequestException as error:
-            if attempt == 2:
-                print(f"Attraction search failed: {error}")
-                return []
+            print(f"Endpoint failed: {error}")
+            time.sleep(2)
 
-            wait_seconds = 2 ** (attempt + 1)
-            print(f"Request failed. Retrying in {wait_seconds} seconds...")
-            time.sleep(wait_seconds)
-
+    print("All Overpass endpoints failed.")
     return []
 
-    
+
 if __name__ == "__main__":
     locations = search_places("Tokyo, Japan")
-    
-    if locations:
-        tokyo=locations[0]
-        
-        attractions=find_attraction(
-            float(tokyo["longitude"]),
-            float(tokyo["latitude"])
-        )
-        
-        for places in attractions:
-            print(places)
-            
-    else:
+
+    if not locations:
         print("Location not found.")
+    else:
+        tokyo = locations[0]
+
+        attractions = find_attraction(
+            float(tokyo["longitude"]),
+            float(tokyo["latitude"]),
+        )
+
+        print(f"Found {len(attractions)} attractions")
+
+        for place in attractions:
+            print(place)
