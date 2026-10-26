@@ -168,11 +168,25 @@ graph_builder.add_edge("retry_planner", "travel_planner")
 
 graph = graph_builder.compile()
 
+destination = input("Enter your destination: ").strip()
+interests = input("Enter your interests (e.g., anime, food, nature): ").strip()
+
+while True:
+    try:
+        days = int(input("How many days is your trip? "))
+
+        if days < 1 or days > 30:
+            print("Please enter a duration between 1 and 30 days.")
+            continue
+
+        break
+    except ValueError:
+        print("Please enter a valid whole number.")
 
 initial_state = {
-    "destination": "Tokyo, Japan",
-    "interests": "Anime, Japanese food, and local culture",
-    "days": 7,
+    "destination": destination,
+    "interests": interests or "Local culture and sightseeing",
+    "days": days,
     "location": "",
     "attractions": [],
     "itinerary": "",
@@ -186,3 +200,4 @@ print("\n" + "=" * 50)
 print("YOUR PERSONALIZED HOLIDAY ITINERARY")
 print("=" * 50)
 print(result["itinerary"])
+
