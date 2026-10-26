@@ -1,10 +1,14 @@
 
-import os
+import json
 import re
+from typing import TypedDict
+
 from dotenv import load_dotenv
 from langchain_groq import ChatGroq
-from typing import TypedDict
-from langgraph.graph import StateGraph,START,END
+from langgraph.graph import StateGraph, START, END
+
+from tools import search_places, find_attraction
+
 load_dotenv()
 
 model = ChatGroq(
@@ -12,88 +16,173 @@ model = ChatGroq(
     temperature=0.3
 )
 
+
 class HolidayState(TypedDict):
-    destination:str
-    interests:str
-    days:int
+    destination: str
+    interests: str
+    days: int
+    location: str
+    attractions: list[dict]
     itinerary: str
-    is_valid:bool
-    retry_count:int
-    
-def travel_planner(state:HolidayState):
+    is_valid: bool
+    retry_count: int
+
+
+def research_places(state: HolidayState):
+    destination = state["destination"]
+
+    try:
+        locations = search_places(destination)
+
+        if not locations:
+            print("Destination lookup returned no results.")
+            return {"location": "", "attractions": []}
+
+        location = locations[0]
+
+        attractions = find_attraction(
+            float(location["longitude"]),
+            float(location["latitude"])
+        )
+
+        if attractions is None:
+            attractions = []
+
+        print(f"Destination researched: {destination}")
+        print(f"Retrieved attractions: {len(attractions)}")
+
+        return {
+            "location": location["name"],
+            "attractions": attractions
+        }
+
+    except Exception as error:
+        print(f"Research failed: {error}")
+        return {"location": "", "attractions": []}
+
+
+def travel_planner(state: HolidayState):
+    attractions = state["attractions"]
+
+    if attractions:
+        places_context = json.dumps(
+            attractions,
+            ensure_ascii=False,
+            indent=2
+        )
+    else:
+        places_context = (
+            "No verified attractions were retrieved. "
+            "Suggest suitable places, but do not claim "
+            "they were verified by the research tool."
+        )
+
     prompt = f"""
-    Plan a {state['days']}-day trip to {state['destination']}.
+You are a professional travel planner.
 
-    User interests: {state['interests']}
+Create an itinerary for EXACTLY {state['days']} days
+in {state['destination']}.
 
-    Create a day-by-day itinerary with:
-    - Morning activities
-    - Afternoon activities
-    - Evening activities
-    - Food recommendations
-    """
-    
-    response=model.invoke(prompt)
-    
+User interests: {state['interests']}
+
+Research results:
+{places_context}
+
+Requirements:
+1. Include exactly {state['days']} days.
+2. Use headings exactly like ## Day 1, ## Day 2, etc.
+3. Include morning, afternoon, and evening activities every day.
+4. Include food recommendations every day.
+5. Prioritize researched attractions when relevant.
+6. Do not claim opening hours have been verified.
+7. Avoid unnecessary repetition.
+8. Return Markdown.
+"""
+
+    response = model.invoke(prompt)
     return {"itinerary": response.content}
 
-def validate_itinerary(state:HolidayState):
-    itinerary=state["itinerary"]
-    
+
+def validate_itinerary(state: HolidayState):
+    itinerary = state["itinerary"]
+
     day_numbers = re.findall(
-        r"(?im)^\s{0,3}#{1,6}\s*(?:\*\*)?Day\s+(\d+)\b",
+        r"(?im)^\s{0,3}#{1,6}\s+\**Day\s+(\d+)\b",
         itinerary
     )
-    
-    unique_days=set(day_numbers)
-    expected_days=state["days"]
-    
-    is_valid=(
-        len(day_numbers)==expected_days
-        and len(unique_days)==expected_days
-        and unique_days == {str(i) for i in range(1, expected_days + 1)}
+
+    unique_days = set(day_numbers)
+    expected_days = state["days"]
+
+    is_valid = (
+        len(day_numbers) == expected_days
+        and len(unique_days) == expected_days
+        and unique_days == {
+            str(i) for i in range(1, expected_days + 1)
+        }
     )
-    
+
     print(f"Expected days: {expected_days}")
     print(f"Detected days: {sorted(unique_days)}")
     print(f"Valid itinerary: {is_valid}")
 
     return {"is_valid": is_valid}
-    
-    
-    
-graph_builder=StateGraph(HolidayState)
 
-graph_builder.add_node("travel_planner",travel_planner)
-graph_builder.add_node("validate_itinerary",validate_itinerary)
 
-graph_builder.add_edge(START, "travel_planner")
+def retry_planner(state: HolidayState):
+    return {"retry_count": state["retry_count"] + 1}
 
+
+def route_after_validation(state: HolidayState):
+    if state["is_valid"]:
+        return "finish"
+
+    if state["retry_count"] < 2:
+        return "retry"
+
+    print("Maximum retries reached.")
+    return "finish"
+
+
+graph_builder = StateGraph(HolidayState)
+
+graph_builder.add_node("research_places", research_places)
+graph_builder.add_node("travel_planner", travel_planner)
+graph_builder.add_node("validate_itinerary", validate_itinerary)
+graph_builder.add_node("retry_planner", retry_planner)
+
+graph_builder.add_edge(START, "research_places")
+graph_builder.add_edge("research_places", "travel_planner")
 graph_builder.add_edge("travel_planner", "validate_itinerary")
-
-
-def route_after_validation(state:HolidayState):
-    if state["is_valid"]:return END
-    return "travel_planner"
 
 graph_builder.add_conditional_edges(
     "validate_itinerary",
-    route_after_validation
+    route_after_validation,
+    {
+        "retry": "retry_planner",
+        "finish": END
+    }
 )
 
-graph=graph_builder.compile()
+graph_builder.add_edge("retry_planner", "travel_planner")
+
+graph = graph_builder.compile()
+
 
 initial_state = {
-    "destination": "Tokyo",
+    "destination": "Tokyo, Japan",
     "interests": "Anime, Japanese food, and local culture",
     "days": 7,
+    "location": "",
+    "attractions": [],
     "itinerary": "",
     "is_valid": False,
     "retry_count": 0
 }
 
+result = graph.invoke(initial_state)
 
-result=graph.invoke(initial_state)
-
+print("\n" + "=" * 50)
+print("YOUR PERSONALIZED HOLIDAY ITINERARY")
+print("=" * 50)
 print(result["itinerary"])
-
